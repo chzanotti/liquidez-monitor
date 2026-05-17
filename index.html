@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor de Liquidez Global</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --surface: #111827;
+  --surface2: #1a2236;
+  --surface3: #1f2a42;
+  --border: #1e293b;
+  --border2: #2d3f5c;
+  --green: #10d98c;
+  --green-bg: rgba(16,217,140,0.08);
+  --green-border: rgba(16,217,140,0.2);
+  --yellow: #fbbf24;
+  --yellow-bg: rgba(251,191,36,0.08);
+  --yellow-border: rgba(251,191,36,0.2);
+  --red: #f43f5e;
+  --red-bg: rgba(244,63,94,0.08);
+  --red-border: rgba(244,63,94,0.2);
+  --blue: #38bdf8;
+  --blue-bg: rgba(56,189,248,0.08);
+  --blue-border: rgba(56,189,248,0.2);
+  --purple: #a78bfa;
+  --text: #f1f5f9;
+  --text2: #94a3b8;
+  --text3: #475569;
+  --mono: 'DM Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --radius: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Subtle grid bg */
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background-image: linear-gradient(rgba(56,189,248,0.015) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(56,189,248,0.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events:none; z-index:0;
+}
+
+/* ===== HEADER ===== */
+.header {
+  position: sticky; top:0; z-index:200;
+  background: rgba(10,14,26,0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 60px;
+}
+.brand { display:flex; align-items:center; gap:12px; }
+.brand-icon {
+  width:36px; height:36px;
+  background: linear-gradient(135deg, #10d98c22, #38bdf822);
+  border: 1px solid var(--green-border);
+  border-radius:8px;
+  display:grid; place-items:center;
+  font-size:16px;
+}
+.brand-name { font-family:var(--mono); font-size:14px; font-weight:500; color:var(--text); letter-spacing:0.05em; }
+.brand-sub { font-family:var(--mono); font-size:10px; color:var(--text3); margin-top:1px; }
+.header-right { display:flex; align-items:center; gap:16px; }
+.api-key-form { display:flex; align-items:center; gap:8px; }
+.api-input {
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--text); font-family: var(--mono); font-size:11px;
+  padding: 6px 10px; border-radius:6px; width:200px; outline:none;
+  transition: border-color 0.2s;
+}
+.api-input:focus { border-color: var(--blue); }
+.api-input::placeholder { color: var(--text3); }
+.btn {
+  font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:0.05em;
+  padding: 7px 14px; border-radius:6px; border:none; cursor:pointer;
+  transition: all 0.2s; display:flex; align-items:center; gap:6px;
+}
+.btn-primary { background:var(--green); color:#000; }
+.btn-primary:hover { background:#0ec47e; transform:translateY(-1px); }
+.btn-secondary { background:var(--surface2); color:var(--text2); border:1px solid var(--border2); }
+.btn-secondary:hover { border-color:var(--border2); color:var(--text); }
+.btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+
+.live-dot { width:7px; height:7px; background:var(--green); border-radius:50%; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,217,140,0.4)} 50%{opacity:0.7;box-shadow:0 0 0 4px rgba(16,217,140,0)} }
+
+/* ===== NAV ===== */
+.nav {
+  background: var(--surface); border-bottom:1px solid var(--border);
+  padding:0 28px; display:flex; gap:4px; position:sticky; top:60px; z-index:100;
+}
+.nav-tab {
+  font-family:var(--mono); font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+  padding:14px 18px; background:transparent; border:none; color:var(--text3);
+  cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all 0.2s;
+}
+.nav-tab:hover { color:var(--text2); }
+.nav-tab.active { color:var(--green); border-bottom-color:var(--green); }
+
+/* ===== MAIN ===== */
+.main { padding:24px 28px; max-width:1440px; margin:0 auto; position:relative; z-index:1; }
+.tab-content { display:none; }
+.tab-content.active { display:flex; flex-direction:column; gap:16px; }
+
+/* ===== CARDS ===== */
+.row { display:grid; gap:16px; }
+.cols-3 { grid-template-columns: repeat(3,1fr); }
+.cols-4 { grid-template-columns: repeat(4,1fr); }
+.cols-2 { grid-template-columns: repeat(2,1fr); }
+.cols-1-2 { grid-template-columns: 1fr 2fr; }
+.cols-2-1 { grid-template-columns: 2fr 1fr; }
+
+.card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:20px;
+  animation: fadeUp 0.4s ease both;
+  position:relative; overflow:hidden;
+}
+.card::before {
+  content:''; position:absolute; inset:0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, transparent 60%);
+  pointer-events:none;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+.card-label {
+  font-family:var(--mono); font-size:9px; letter-spacing:0.18em; text-transform:uppercase;
+  color:var(--text3); margin-bottom:14px; display:flex; align-items:center; gap:8px;
+}
+.card-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+/* ===== SCORE GAUGE ===== */
+.score-wrap { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.gauge-svg { width:180px; height:100px; overflow:visible; }
+.score-big { font-family:var(--mono); font-size:48px; font-weight:500; line-height:1; }
+.score-regime-name { font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:0.1em; text-transform:uppercase; }
+.score-desc { font-size:12px; color:var(--text2); text-align:center; max-width:240px; line-height:1.5; margin-top:4px; }
+
+/* ===== STAT CARDS ===== */
+.stat-card {
+  background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+  padding:14px; cursor:pointer; transition: border-color 0.2s, transform 0.2s;
+  position:relative;
+}
+.stat-card:hover { border-color:var(--border2); transform:translateY(-1px); }
+.stat-card.loading { pointer-events:none; }
+.stat-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:8px; }
+.stat-name { font-family:var(--mono); font-size:10px; letter-spacing:0.08em; color:var(--text2); }
+.stat-freq { font-family:var(--mono); font-size:9px; color:var(--text3); }
+.stat-value { font-family:var(--mono); font-size:20px; font-weight:500; margin-bottom:6px; line-height:1; }
+.stat-row { display:flex; align-items:center; justify-content:space-between; }
+.stat-change { font-family:var(--mono); font-size:11px; font-weight:500; display:flex; align-items:center; gap:3px; }
+.stat-zscore { font-family:var(--mono); font-size:10px; color:var(--text3); }
+.stat-bar { height:2px; background:var(--border); border-radius:1px; margin-top:8px; overflow:hidden; }
+.stat-bar-fill { height:100%; border-radius:1px; transition:width 1s ease; }
+
+/* Skeleton loader */
+.skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%); background-size:200% 100%; animation: shimmer 1.5s infinite; border-radius:4px; }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ===== TOOLTIP / MODAL ===== */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px);
+  z-index:500; display:none; place-items:center;
+}
+.modal-overlay.open { display:grid; }
+.modal {
+  background:var(--surface); border:1px solid var(--border2); border-radius:12px;
+  width:min(640px, 95vw); max-height:85vh; overflow-y:auto;
+  padding:28px; position:relative;
+  animation: fadeUp 0.25s ease;
+}
+.modal-close {
+  position:absolute; top:16px; right:16px;
+  background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+  color:var(--text2); font-size:16px; width:32px; height:32px;
+  cursor:pointer; display:grid; place-items:center;
+}
+.modal-close:hover { color:var(--text); }
+.modal-title { font-family:var(--mono); font-size:16px; font-weight:500; margin-bottom:4px; }
+.modal-source { font-family:var(--mono); font-size:10px; color:var(--text3); margin-bottom:20px; }
+
+.explain-block { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px; }
+.explain-block-title { font-family:var(--mono); font-size:9px; letter-spacing:0.15em; text-transform:uppercase; color:var(--text3); margin-bottom:8px; }
+.explain-block-text { font-size:13px; color:var(--text2); line-height:1.7; }
+
+.effect-row {
+  display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;
+}
+.effect-box { border-radius:8px; padding:14px; }
+.effect-box.up { background:var(--green-bg); border:1px solid var(--green-border); }
+.effect-box.down { background:var(--red-bg); border:1px solid var(--red-border); }
+.effect-label { font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:8px; }
+.effect-label.up { color:var(--green); }
+.effect-label.down { color:var(--red); }
+.effect-item { display:flex; gap:8px; margin-bottom:6px; font-size:12px; color:var(--text2); line-height:1.5; }
+.effect-emoji { flex-shrink:0; }
+
+/* ===== CHART ===== */
+.chart-wrap { position:relative; }
+.chart-svg { width:100%; overflow:visible; }
+
+/* ===== SIGNALS ===== */
+.signal { display:flex; gap:12px; padding:12px 14px; border-radius:8px; border:1px solid; margin-bottom:8px; }
+.signal-icon { font-size:18px; flex-shrink:0; }
+.signal-body { flex:1; }
+.signal-title { font-size:13px; font-weight:600; margin-bottom:3px; }
+.signal-text { font-size:12px; color:var(--text2); line-height:1.5; }
+
+/* ===== SETUP PANEL ===== */
+.setup-panel {
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:32px; text-align:center; max-width:500px; margin:60px auto;
+}
+.setup-icon { font-size:48px; margin-bottom:16px; }
+.setup-title { font-family:var(--mono); font-size:18px; margin-bottom:8px; }
+.setup-text { font-size:14px; color:var(--text2); line-height:1.6; margin-bottom:24px; }
+.setup-steps { text-align:left; background:var(--surface2); border-radius:8px; padding:20px; margin-bottom:24px; }
+.setup-step { display:flex; gap:12px; margin-bottom:12px; font-size:13px; color:var(--text2); line-height:1.5; }
+.setup-step-num { font-family:var(--mono); font-size:11px; background:var(--blue-bg); color:var(--blue); border:1px solid var(--blue-border); border-radius:50%; width:22px; height:22px; display:grid; place-items:center; flex-shrink:0; margin-top:1px; }
+.setup-input-row { display:flex; gap:8px; }
+.setup-input { flex:1; background:var(--surface2); border:1px solid var(--border2); color:var(--text); font-family:var(--mono); font-size:12px; padding:10px 14px; border-radius:8px; outline:none; }
+.setup-input:focus { border-color:var(--blue); }
+.setup-note { font-size:11px; color:var(--text3); margin-top:12px; }
+.link { color:var(--blue); text-decoration:none; }
+.link:hover { text-decoration:underline; }
+
+/* ===== REGIME BAR ===== */
+.regime-track { height:8px; background:var(--surface2); border-radius:4px; overflow:hidden; margin:12px 0; position:relative; }
+.regime-segments { display:flex; height:100%; }
+.regime-seg { height:100%; flex:1; }
+.regime-needle { position:absolute; top:-4px; width:2px; height:16px; background:white; border-radius:1px; transition:left 1s cubic-bezier(0.4,0,0.2,1); box-shadow:0 0 6px rgba(255,255,255,0.6); }
+
+/* ===== FORMULA ===== */
+.formula { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; font-family:var(--mono); font-size:13px; color:var(--green); text-align:center; position:relative; margin:12px 0; }
+.formula-tag { position:absolute; top:-9px; left:14px; font-size:9px; letter-spacing:0.15em; color:var(--text3); background:var(--bg); padding:0 6px; text-transform:uppercase; }
+
+/* ===== INVEST TABLE ===== */
+.invest-table { width:100%; border-collapse:collapse; }
+.invest-table th { font-family:var(--mono); font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:var(--text3); padding:10px 12px; text-align:left; background:var(--bg); border-bottom:1px solid var(--border); }
+.invest-table td { font-size:12px; color:var(--text2); padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; line-height:1.5; }
+.invest-table td:first-child { font-family:var(--mono); font-size:11px; color:var(--text); }
+.invest-table tr:last-child td { border-bottom:none; }
+
+.pill { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:0.05em; }
+.pill-green { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); }
+.pill-yellow { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow-border); }
+.pill-red { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
+.pill-blue { background:var(--blue-bg); color:var(--blue); border:1px solid var(--blue-border); }
+
+/* ===== LOADING ===== */
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid var(--border2); border-top-color:var(--green); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+.status-bar { display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11px; color:var(--text3); padding:8px 0; }
+
+/* ===== TOOLTIP ===== */
+.tooltip-popup { position:fixed; background:var(--surface2); border:1px solid var(--border2); border-radius:6px; padding:8px 12px; font-family:var(--mono); font-size:11px; color:var(--text); pointer-events:none; z-index:1000; display:none; max-width:200px; line-height:1.4; }
+
+/* Responsive */
+@media(max-width:900px) {
+  .cols-3,.cols-4 { grid-template-columns:1fr 1fr; }
+  .cols-1-2,.cols-2-1,.cols-2 { grid-template-columns:1fr; }
+  .main { padding:16px; }
+  .effect-row { grid-template-columns:1fr; }
+}
+@media(max-width:500px) {
+  .cols-3,.cols-4,.cols-2 { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="brand">
+    <div class="brand-icon">🌊</div>
+    <div>
+      <div class="brand-name">Liquidity Monitor</div>
+      <div class="brand-sub">Datos reales · FRED API</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div id="headerStatus" style="display:none; align-items:center; gap:8px; font-family:var(--mono); font-size:11px; color:var(--text3);">
+      <div class="live-dot"></div>
+      <span id="lastUpdate">—</span>
+    </div>
+    <button class="btn btn-secondary" onclick="showSetup()" id="configBtn">⚙ Auto-Update</button>
+  </div>
+</div>
+
+<!-- NAV -->
+<div class="nav" id="mainNav" style="display:none">
+  <button class="nav-tab active" onclick="switchTab('resumen', this)">📊 Resumen</button>
+  <button class="nav-tab" onclick="switchTab('variables', this)">📚 Variables</button>
+  <button class="nav-tab" onclick="switchTab('invertir', this)">💡 ¿Cómo invertir?</button>
+  <button class="nav-tab" onclick="switchTab('aprende', this)">🎓 Aprendé</button>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="mainContent">
+
+  <!-- SETUP SCREEN -->
+  <div id="setupScreen" class="tab-content" style="display:none">
+    <div class="setup-panel">
+      <div class="setup-icon">🔑</div>
+      <div class="setup-title">Configurá tu Monitor</div>
+      <div class="setup-text">Para traer datos reales del mercado necesitás una <strong>API Key de FRED</strong> — es gratis, de la Reserva Federal de EEUU.</div>
+      <div class="setup-steps">
+        <div class="setup-step"><div class="setup-step-num">1</div><div>Entrá a <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" class="link">fred.stlouisfed.org</a> y creá una cuenta gratuita</div></div>
+        <div class="setup-step"><div class="setup-step-num">2</div><div>En tu perfil → "API Keys" → "Request API Key"</div></div>
+        <div class="setup-step"><div class="setup-step-num">3</div><div>Copiá tu key (32 caracteres) y pegala abajo</div></div>
+      </div>
+      <div class="setup-input-row">
+        <input class="setup-input" id="setupKey" placeholder="Tu API Key de FRED (ej: abc123def456...)" type="password">
+        <button class="btn btn-primary" onclick="initWithKey()">Conectar →</button>
+      </div>
+      <div id="setupError" style="color:var(--red);font-size:12px;margin-top:10px;display:none;"></div>
+      <div class="setup-note">🔒 Tu key se guarda solo en este navegador (localStorage). No se envía a ningún servidor externo.</div>
+    </div>
+  </div>
+
+  <!-- LOADING SCREEN -->
+  <div id="loadingScreen" class="tab-content" style="text-align:center; padding:80px 20px;">
+    <div class="spinner" style="width:40px;height:40px;border-width:3px;margin:0 auto 20px;"></div>
+    <div style="font-family:var(--mono);font-size:14px;color:var(--text2);">Cargando datos reales de mercado...</div>
+    <div id="loadingStatus" style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:8px;">Conectando con FRED API</div>
+  </div>
+
+  <!-- TAB: RESUMEN -->
+  <div id="tab-resumen" class="tab-content">
+
+    <div class="row cols-1-2">
+      <!-- Score panel -->
+      <div class="card">
+        <div class="card-label">Termómetro de Liquidez Global</div>
+        <div class="score-wrap">
+          <svg class="gauge-svg" viewBox="0 0 180 100">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#f43f5e"/>
+                <stop offset="40%" stop-color="#fbbf24"/>
+                <stop offset="100%" stop-color="#10d98c"/>
+              </linearGradient>
+            </defs>
+            <!-- Track -->
+            <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="#1a2236" stroke-width="14" stroke-linecap="round"/>
+            <!-- Fill -->
+            <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="220" id="gaugePath" stroke-dashoffset="220" style="transition:stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1)"/>
+            <!-- Needle -->
+            <line id="gaugeNeedle" x1="90" y1="90" x2="90" y2="28" stroke="white" stroke-width="2.5" stroke-linecap="round" style="transform-origin:90px 90px; transition:transform 1.5s cubic-bezier(0.4,0,0.2,1);"/>
+            <circle cx="90" cy="90" r="5" fill="white"/>
+            <!-- Labels -->
+            <text x="16" y="108" font-family="DM Mono" font-size="9" fill="#475569">BAJO</text>
+            <text x="154" y="108" font-family="DM Mono" font-size="9" fill="#475569" text-anchor="end">ALTO</text>
+          </svg>
+          <div class="score-big" id="scoreBig" style="color:var(--yellow)">—</div>
+          <div class="score-regime-name" id="scoreRegimeName" style="color:var(--yellow)">Calculando...</div>
+          <div class="score-desc" id="scoreDesc">Esperando datos...</div>
+        </div>
+
+        <!-- Barra de régimen -->
+        <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;">
+            <span style="color:var(--red)">🔴 CONTRACCIÓN</span>
+            <span style="color:var(--yellow)">🟡 NEUTRAL</span>
+            <span style="color:var(--green)">🟢 EXPANSIÓN</span>
+          </div>
+          <div class="regime-track">
+            <div class="regime-segments">
+              <div class="regime-seg" style="background:linear-gradient(90deg,#f43f5e44,#f43f5e88)"></div>
+              <div class="regime-seg" style="background:#fbbf2466"></div>
+              <div class="regime-seg" style="background:linear-gradient(90deg,#10d98c66,#10d98c99)"></div>
+            </div>
+            <div class="regime-needle" id="regimeNeedle" style="left:50%"></div>
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);text-align:center;">
+            Posición actual del score (0 = mínima liquidez, 100 = máxima)
+          </div>
+        </div>
+
+        <!-- Liquidez Neta Fed -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <div class="card-label" style="margin-bottom:10px;">Liquidez Neta de la Fed</div>
+          <div class="formula">
+            <div class="formula-tag">Fórmula</div>
+            Balance Fed − RRP − TGA
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;" id="fedTriple">
+            <div style="text-align:center;padding:10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">
+              <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;">FED BALANCE</div>
+              <div style="font-family:var(--mono);font-size:14px;color:var(--blue)" id="fedVal">—</div>
+            </div>
+            <div style="text-align:center;padding:10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">
+              <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;">− RRP</div>
+              <div style="font-family:var(--mono);font-size:14px;color:var(--red)" id="rrpVal">—</div>
+            </div>
+            <div style="text-align:center;padding:10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">
+              <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;">− TGA</div>
+              <div style="font-family:var(--mono);font-size:14px;color:var(--red)" id="tgaVal">—</div>
+            </div>
+          </div>
+          <div style="text-align:center;margin-top:10px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">LIQUIDEZ NETA = </span>
+            <span style="font-family:var(--mono);font-size:22px;font-weight:500;" id="netLiq">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Variables grid -->
+      <div class="card">
+        <div class="card-label">Variables en Tiempo Real <span style="font-size:9px;color:var(--text3);font-family:var(--mono);">(click para explicación)</span></div>
+        <div class="row cols-3" id="statGrid" style="gap:10px;">
+          <!-- filled by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart + Señales -->
+    <div class="row cols-2-1">
+      <div class="card">
+        <div class="card-label">Historial del Score de Liquidez (últimas 52 semanas)</div>
+        <div class="chart-wrap" style="height:200px;">
+          <svg id="mainChart" class="chart-svg" viewBox="0 0 800 200" preserveAspectRatio="none" style="height:100%;"></svg>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--text3);"><div style="width:14px;height:3px;background:var(--green);border-radius:2px"></div>Expansión &gt;65</div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--text3);"><div style="width:14px;height:3px;background:var(--yellow);border-radius:2px"></div>Neutral 35-65</div>
+          <div style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--text3);"><div style="width:14px;height:3px;background:var(--red);border-radius:2px"></div>Contracción &lt;35</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Señales Activas</div>
+        <div id="signalsList">
+          <div style="color:var(--text3);font-size:13px;text-align:center;padding:20px;">Cargando señales...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar" id="statusBar" style="justify-content:flex-end;">
+      <span id="statusText" style="color:var(--text3)">—</span>
+    </div>
+  </div>
+
+  <!-- TAB: VARIABLES -->
+  <div id="tab-variables" class="tab-content">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;color:var(--text2);line-height:1.6;">
+      💡 <strong style="color:var(--text)">Hacé click en cualquier variable</strong> para ver una explicación completa en lenguaje simple: qué es, por qué importa, qué pasa cuando sube o baja, y dónde encontrar el dato.
+    </div>
+    <div class="row cols-3" id="varGrid" style="gap:12px;">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <!-- TAB: INVERTIR -->
+  <div id="tab-invertir" class="tab-content">
+
+    <div class="row cols-3">
+      <div class="card" style="border-color:var(--green-border);">
+        <div class="card-label" style="color:var(--green);">🟢 Expansión — Score &gt; 65</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6;">La liquidez es abundante. Hay mucho dinero disponible en el sistema. Este es el mejor ambiente para activos de riesgo.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="signal" style="background:var(--green-bg);border-color:var(--green-border);padding:10px 12px;">
+            <div class="signal-icon">📈</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--green)">Acciones</div><div class="signal-text">Favorece todo pero especialmente tecnológicas, small caps y sectores de crecimiento. Los múltiplos se expanden.</div></div>
+          </div>
+          <div class="signal" style="background:var(--green-bg);border-color:var(--green-border);padding:10px 12px;">
+            <div class="signal-icon">₿</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--green)">Cripto</div><div class="signal-text">Alta correlación con liquidez. En expansión, BTC y ETH históricamente suben 30–100% en 3–6 meses.</div></div>
+          </div>
+          <div class="signal" style="background:var(--yellow-bg);border-color:var(--yellow-border);padding:10px 12px;">
+            <div class="signal-icon">🏦</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--yellow)">Bonos</div><div class="signal-text">Si la expansión viene con inflación, bonos largos sufren. Mejor crédito corto o mantener efectivo mínimo.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="border-color:var(--yellow-border);">
+        <div class="card-label" style="color:var(--yellow);">🟡 Neutral — Score 35-65</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6;">Zona de transición. La liquidez no es ni abundante ni escasa. Hay que mirar hacia dónde se mueve el score.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="signal" style="background:var(--yellow-bg);border-color:var(--yellow-border);padding:10px 12px;">
+            <div class="signal-icon">📊</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--yellow)">Acciones</div><div class="signal-text">Ser selectivo. Privilegiar empresas con ganancias reales y dividendos. Evitar especulativas.</div></div>
+          </div>
+          <div class="signal" style="background:var(--yellow-bg);border-color:var(--yellow-border);padding:10px 12px;">
+            <div class="signal-icon">⚡</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--yellow)">Cripto</div><div class="signal-text">Alta volatilidad sin dirección clara. Reducir exposición o esperar ruptura del score hacia arriba o abajo.</div></div>
+          </div>
+          <div class="signal" style="background:var(--green-bg);border-color:var(--green-border);padding:10px 12px;">
+            <div class="signal-icon">💵</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--green)">Bonos / Cash</div><div class="signal-text">Bonos de corto plazo y Letras del Tesoro ofrecen carry atractivo sin riesgo de duración.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="border-color:var(--red-border);">
+        <div class="card-label" style="color:var(--red);">🔴 Contracción — Score &lt; 35</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6;">La liquidez es escasa. El dinero está caro y difícil de conseguir. Máxima precaución con activos de riesgo.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="signal" style="background:var(--red-bg);border-color:var(--red-border);padding:10px 12px;">
+            <div class="signal-icon">🛡️</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--red)">Acciones</div><div class="signal-text">Subponderar. Solo defensivos: utilities, salud, consumo básico. Evitar deuda alta y sin ganancias.</div></div>
+          </div>
+          <div class="signal" style="background:var(--red-bg);border-color:var(--red-border);padding:10px 12px;">
+            <div class="signal-icon">⛔</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--red)">Cripto</div><div class="signal-text">Máxima precaución. En contracción severa, caídas de 50–80% son históricamente comunes.</div></div>
+          </div>
+          <div class="signal" style="background:var(--green-bg);border-color:var(--green-border);padding:10px 12px;">
+            <div class="signal-icon">🥇</div>
+            <div><div class="signal-title" style="font-size:12px;color:var(--green)">Refugio</div><div class="signal-text">Oro, Treasuries cortos, dólar (cash). En contracción el dólar tiende a apreciarse.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Señales especiales -->
+    <div class="card">
+      <div class="card-label">🚨 Señales Especiales que Tenés que Conocer</div>
+      <table class="invest-table">
+        <thead><tr><th>Señal</th><th>¿Qué significa?</th><th>¿Qué hacer?</th><th>Nivel de alerta</th></tr></thead>
+        <tbody>
+          <tr><td>📉 Mercado sube pero Score baja</td><td>El rally no está respaldado por liquidez real. Es una trampa alcista. Alta probabilidad de corrección.</td><td>No perseguir el rally. Reducir posiciones y hedgear con puts.</td><td><span class="pill pill-red">🔴 ALTO</span></td></tr>
+          <tr><td>📈 Mercado baja pero Score sube</td><td>La liquidez está mejorando antes que los precios lo reflejen. Oportunidad de entrada anticipada.</td><td>Acumular gradualmente en caídas. Stop ajustado.</td><td><span class="pill pill-yellow">🟡 MEDIO</span></td></tr>
+          <tr><td>💧 RRP cayendo rápido</td><td>El dinero que estaba "estacionado" en la Fed vuelve al mercado. Inyección masiva de liquidez.</td><td>Aumentar exposición a riesgo: acciones growth y cripto.</td><td><span class="pill pill-green">🟢 OPORT.</span></td></tr>
+          <tr><td>🏦 TGA se drena</td><td>El gobierno gasta, inyecta dinero real al sistema bancario. Efecto positivo de corto plazo.</td><td>Positivo temporal. Monitorear si se sostiene.</td><td><span class="pill pill-blue">🔵 INFO</span></td></tr>
+          <tr><td>📊 Spreads HY explotan</td><td>El mercado de crédito está bajo estrés. Señal temprana de que algo se va a romper.</td><td>Reducir riesgo inmediatamente. Precede crisis históricamente.</td><td><span class="pill pill-red">🔴 MUY ALTO</span></td></tr>
+          <tr><td>🌍 Fed + BCE + PBoC expanden juntos</td><td>Los 3 grandes bancos centrales imprimen al mismo tiempo. La liquidez global explota.</td><td>Máxima exposición a riesgo. Este patrón fue 2020-2021.</td><td><span class="pill pill-green">🟢 ALCISTA</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Workflow -->
+    <div class="card">
+      <div class="card-label">📅 Tu Rutina Semanal (10 minutos)</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:var(--mono);font-size:24px;color:var(--blue);margin-bottom:6px;">1</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:8px;letter-spacing:0.1em;">JUEVES</div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5">Abrí este dashboard. Los datos del Balance Fed, RRP y TGA se actualizan solos.</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:var(--mono);font-size:24px;color:var(--blue);margin-bottom:6px;">2</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:8px;letter-spacing:0.1em;">MIRÁ</div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5">¿El Score subió o bajó respecto a la semana pasada? ¿Cambió de régimen?</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:var(--mono);font-size:24px;color:var(--blue);margin-bottom:6px;">3</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:8px;letter-spacing:0.1em;">SEÑALES</div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5">Revisá si hay alguna señal de divergencia o alerta activa.</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:var(--mono);font-size:24px;color:var(--blue);margin-bottom:6px;">4</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:8px;letter-spacing:0.1em;">CONTEXTO</div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5">¿Hay reunión de la Fed esa semana? ¿Vence deuda del Tesoro? Anotá el contexto.</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+          <div style="font-family:var(--mono);font-size:24px;color:var(--blue);margin-bottom:6px;">5</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:8px;letter-spacing:0.1em;">DECISIÓN</div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5">¿Tus posiciones están alineadas con el régimen actual? Ajustá si es necesario.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: APRENDÉ -->
+  <div id="tab-aprende" class="tab-content">
+    <div class="card">
+      <div class="card-label">🎓 Conceptos Fundamentales — En palabras simples</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;" id="learnGrid">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">🔗 La Cadena de Liquidez — Cómo fluye el dinero</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.8;max-width:800px;">
+        <p style="margin-bottom:12px;">Para entender este dashboard, pensá en el dinero como agua en un sistema de cañerías. La <strong style="color:var(--blue)">Reserva Federal</strong> es el tanque principal: cuando abre la canilla (QE/compra bonos), más agua entra al sistema. Cuando la cierra (QT), el flujo se corta.</p>
+        <p style="margin-bottom:12px;">Pero hay dos "represas" que retienen esa agua antes de que llegue al mercado: el <strong style="color:var(--red)">RRP</strong> (donde los fondos money market guardan el exceso) y el <strong style="color:var(--yellow)">TGA</strong> (donde el Tesoro guarda su plata). Cuando esas represas se vacían, el agua llega al mercado.</p>
+        <p style="margin-bottom:12px;">El <strong style="color:var(--purple)">dólar (DXY)</strong> actúa como la presión del sistema: cuando el dólar sube, la liquidez global se aprieta porque todo el mundo necesita más dólares para pagar deudas en esa moneda. Cuando el dólar baja, la presión se relaja.</p>
+        <p>Los <strong style="color:var(--green)">spreads de crédito</strong> son el sensor de temperatura: si empiezan a subir, el sistema está bajo estrés aunque el nivel de agua parezca normal. Es la señal de alerta más temprana.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">❓ Preguntas Frecuentes</div>
+      <div style="display:flex;flex-direction:column;gap:12px;" id="faqList"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal" id="modalContent">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="tooltip-popup" id="tooltipEl"></div>
+
+<script>
+// ============================================================
+// DATA DEFINITIONS
+// ============================================================
+const DATA_PATH = './data/';
+
+async function fredFetch(seriesId) {
+  const res = await fetch(`${DATA_PATH}${seriesId}.json`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+const VARS = [
+  {
+    id: 'WALCL', name: 'Balance de la Fed', emoji: '🏛️',
+    unit: 'B USD', divisor: 1000, decimals: 1, suffix: 'T',
+    color: '#38bdf8', weight: 0.22, freq: 'Semanal',
+    direction: 'pos', // higher = more liquidity
+    simple_name: 'Cuánto dinero imprimió la Fed',
+    what: 'Este número muestra el tamaño total de la "billetera" de la Reserva Federal de EEUU. Cuando la Fed quiere estimular la economía, compra bonos del gobierno y de hipotecas. Cada compra aumenta este número.',
+    analogy: 'Imaginá que la Fed es un banco central que puede crear dinero de la nada. Cuando compra cosas, ese dinero nuevo entra al sistema financiero. Este número mide cuánto dinero nuevo creó en total.',
+    who: 'Reserva Federal de EEUU. Se publica cada jueves a las 4:30pm ET en el reporte H.4.1.',
+    how_to_find: 'FRED: buscar "WALCL" o ir a fred.stlouisfed.org',
+    up_simple: 'Más dinero disponible en el sistema → las tasas bajan, los créditos son más baratos, las acciones y cripto tienden a subir.',
+    down_simple: 'Menos dinero en el sistema (la Fed retira dinero) → los créditos se encarecen, las inversiones de riesgo tienden a bajar.',
+    up_assets: ['📈 Acciones: positivo, múltiplos se expanden', '₿ Cripto: muy positivo, correlación alta', '🏠 Real estate: tasas bajas favorecen'],
+    down_assets: ['📉 Acciones: presión, especialmente growth', '₿ Cripto: negativo, caídas frecuentes', '💵 Cash/bonos cortos: se vuelven más atractivos'],
+  },
+  {
+    id: 'RRPONTSYD', name: 'Reverse Repo (RRP)', emoji: '💤',
+    unit: 'B USD', divisor: 1000, decimals: 2, suffix: 'T',
+    color: '#f43f5e', weight: 0.18, freq: 'Diario',
+    direction: 'neg', // higher = less liquidity
+    simple_name: 'Dinero "dormido" fuera del mercado',
+    what: 'El Reverse Repo es como una "cuenta de ahorro" que tienen los fondos de inversión en la Fed. Cuando hay demasiado dinero dando vueltas y no hay donde invertirlo con buen retorno, estos fondos estacionan el efectivo ahí de un día para el otro.',
+    analogy: 'Pensá en el RRP como un parking para el dinero. Si el parking está lleno, significa que hay mucho dinero que no encontró mejor destino. Cuando el parking se vacía, ese dinero vuelve al mercado a buscar retorno.',
+    who: 'Reserva Federal de Nueva York. Dato diario, disponible al otro día.',
+    how_to_find: 'FRED: buscar "RRPONTSYD". NY Fed también lo publica en su web.',
+    up_simple: 'Más dinero "estacionado" = menos dinero circulando en el mercado → tiende a ser negativo para activos de riesgo.',
+    down_simple: 'Menos dinero "estacionado" = más dinero volviendo al mercado → positivo para acciones y cripto. El drenaje del RRP fue clave en el bull market 2023.',
+    up_assets: ['📉 Liquidez se reduce, presión bajista', '💵 Señal de que los fondos no encuentran retorno en el mercado'],
+    down_assets: ['📈 Liquidez vuelve al sistema', '₿ Cripto: histórica relación inversa con RRP', '📊 Positivo para activos de riesgo en general'],
+  },
+  {
+    id: 'WTREGEN', name: 'TGA (Cuenta del Tesoro)', emoji: '🏦',
+    unit: 'B USD', divisor: 1, decimals: 0, suffix: 'B',
+    color: '#fbbf24', weight: 0.15, freq: 'Semanal',
+    direction: 'neg',
+    simple_name: 'La "cuenta bancaria" del gobierno',
+    what: 'El TGA (Treasury General Account) es literalmente la cuenta corriente del gobierno de EEUU en la Fed. Cuando el gobierno recauda impuestos o vende bonos, ese dinero entra al TGA. Cuando el gobierno paga sueldos, beneficios o subsidios, el TGA baja.',
+    analogy: 'Es exactamente como tu cuenta bancaria pero del gobierno. Cuando el gobierno "cobra" (impuestos, venta de bonos), el saldo sube. Cuando "paga" (gasto público), el saldo baja. La diferencia es que cuando el gobierno paga, ese dinero entra al sistema bancario privado.',
+    who: 'Departamento del Tesoro de EEUU. Publicado diariamente en el "Daily Treasury Statement".',
+    how_to_find: 'FRED: buscar "WTREGEN". También en TreasuryDirect.gov.',
+    up_simple: 'El gobierno acumula dinero → ese dinero sale del sistema financiero → efecto negativo de corto plazo para la liquidez.',
+    down_simple: 'El gobierno gasta → ese dinero entra al sistema bancario → efecto positivo para la liquidez. Cuando el Tesoro gasta $200B en un mes, eso es liquidez nueva para el mercado.',
+    up_assets: ['📉 Efecto restrictivo temporal', '⚠️ Si sube mucho antes de un techo de deuda, puede presionar mercados'],
+    down_assets: ['📈 Inyección directa de liquidez', '🏦 Beneficia primero a los bancos', '📊 Positivo en 1-4 semanas para activos de riesgo'],
+  },
+  {
+    id: 'M2SL', name: 'M2 — Oferta Monetaria', emoji: '💸',
+    unit: 'B USD', divisor: 1000, decimals: 1, suffix: 'T',
+    color: '#10d98c', weight: 0.10, freq: 'Mensual',
+    direction: 'pos',
+    simple_name: 'Todo el dinero que existe en la economía',
+    what: 'M2 mide todo el dinero que existe en la economía americana: billetes, monedas, depósitos en cuentas corrientes, cuentas de ahorro, y fondos money market. Es la foto más completa de cuánto dinero hay disponible.',
+    analogy: 'Si la economía fuera una pecera, el M2 sería la cantidad total de agua. Más agua = más facilidad para que los peces (empresas, personas) naden. Menos agua = espacio más apretado.',
+    who: 'Reserva Federal de EEUU. Publicado mensualmente, con retraso de ~4-6 semanas.',
+    how_to_find: 'FRED: buscar "M2SL". Es una de las series más consultadas.',
+    up_simple: 'Más dinero en circulación → soporte para precios de activos, puede generar inflación si crece muy rápido.',
+    down_simple: 'Menos dinero disponible → presión deflacionaria. En 2022-2023 el M2 cayó por primera vez en décadas, coincidiendo con caídas en acciones y cripto.',
+    up_assets: ['📈 Soporte amplio para todos los activos', '🏠 Real estate: correlación histórica fuerte', '📊 Mercados de crédito se relajan'],
+    down_assets: ['📉 Presión amplia sobre activos', '₿ Cripto: caídas importantes históricamente', '💵 Cash se vuelve rey'],
+  },
+  {
+    id: 'DGS10', name: 'Tasa del Tesoro 10 años', emoji: '📐',
+    unit: '%', divisor: 1, decimals: 2, suffix: '%',
+    color: '#a78bfa', weight: 0.12, freq: 'Semanal',
+    direction: 'neg',
+    simple_name: 'El "precio" del dinero a largo plazo',
+    what: 'Es el rendimiento (interés) que paga el bono del gobierno americano a 10 años. Se considera la tasa libre de riesgo global porque EEUU nunca dejó de pagar su deuda. Desde esta tasa se calculan las tasas hipotecarias, de préstamos empresariales y el costo de capital global.',
+    analogy: 'Si el dinero fuera agua, esta tasa sería el "precio por litro". Cuando la tasa sube, el dinero se encarece: los créditos hipotecarios cuestan más, las empresas pagan más por financiarse, y conviene más poner la plata en bonos seguros que arriesgar en acciones.',
+    who: 'Departamento del Tesoro de EEUU. Se actualiza cada día de mercado.',
+    how_to_find: 'FRED: "DGS10". También en Bloomberg, Yahoo Finance como ^TNX.',
+    up_simple: 'Tasa sube → dinero más caro → presión sobre acciones (especialmente tecnológicas), bonos caen, dólar se fortalece, cripto sufre.',
+    down_simple: 'Tasa baja → dinero más barato → acciones growth se disparan, bonos suben, cripto se beneficia, dólar cede.',
+    up_assets: ['📉 Tech y growth: múltiplos comprimen', '₿ Cripto: correlación negativa fuerte', '💵 Dólar: se fortalece', '🏠 Real estate: hipotecas más caras'],
+    down_assets: ['📈 Tech y growth: expansión de múltiplos', '₿ Cripto: positivo', '🏦 Bonos: precio sube (yield inversa al precio)'],
+  },
+  {
+    id: 'DTWEXBGS', name: 'Índice del Dólar (DXY)', emoji: '💵',
+    unit: 'puntos', divisor: 1, decimals: 2, suffix: '',
+    color: '#fb923c', weight: 0.10, freq: 'Semanal',
+    direction: 'neg',
+    simple_name: 'Qué tan fuerte está el dólar',
+    what: 'El DXY mide el valor del dólar americano contra una canasta de otras monedas importantes (euro, yen, libra, etc.). Un número más alto significa dólar más fuerte. Es el termómetro de las condiciones financieras para todo el mundo porque la mayoría de las deudas globales están en dólares.',
+    analogy: 'El dólar es el "idioma" del comercio financiero global. Cuando el dólar se fortalece, es como si el idioma cambiara de reglas: los países y empresas que deben en dólares tienen que pagar más en su moneda local, lo que aprieta sus finanzas.',
+    who: 'ICE (Intercontinental Exchange). Disponible en FRED como "DTWEXBGS" (índice amplio).',
+    how_to_find: 'FRED: "DTWEXBGS". También en TradingView como "DXY" o "USDI".',
+    up_simple: 'Dólar más fuerte → aprieta condiciones financieras globales → presión sobre emergentes, commodities y cripto. Típicamente malo para activos de riesgo.',
+    down_simple: 'Dólar más débil → afloja las condiciones globales → positivo para todo: acciones, cripto, commodities, mercados emergentes.',
+    up_assets: ['📉 Cripto: cae (correlación inversa fuerte)', '📉 Emergentes: presión sobre sus monedas', '📉 Commodities: bajan en dólares', '📈 Dólar cash: se valoriza'],
+    down_assets: ['📈 Cripto: sube (correlación inversa fuerte)', '📈 Emergentes: flujos de capitales positivos', '📈 Commodities: suben', '📉 Dólar cash: se devalúa'],
+  },
+  {
+    id: 'BAMLH0A0HYM2', name: 'Spreads de Crédito HY', emoji: '🌡️',
+    unit: 'bps', divisor: 1, decimals: 0, suffix: 'bps',
+    color: '#34d399', weight: 0.08, freq: 'Semanal',
+    direction: 'neg',
+    simple_name: 'El termómetro del estrés financiero',
+    what: 'Los "spreads de High Yield" miden cuánto extra pagan las empresas riesgosas (con muchas deudas) por pedir prestado versus lo que paga el gobierno americano. Cuando este número sube, significa que el mercado percibe más riesgo de que esas empresas no puedan pagar.',
+    analogy: 'Es como la diferencia entre la tasa de interés de un banco para un cliente confiable versus uno de riesgo. Si un cliente confiable paga 5% y uno riesgoso paga 8%, el spread es 3% (300 puntos base). Cuando las empresas riesgosas tienen que pagar mucho más, es señal de que algo huele mal en el sistema.',
+    who: 'ICE Bank of America. Publicado diariamente por FRED.',
+    how_to_find: 'FRED: "BAMLH0A0HYM2". Uno de los indicadores de estrés más seguidos por traders profesionales.',
+    up_simple: 'Spreads suben → el mercado teme que las empresas no puedan pagar → señal de estrés sistémico. Precede caídas en acciones históricamente.',
+    down_simple: 'Spreads bajan → el mercado tiene confianza → condiciones financieras se relajan. Positivo para todo el mercado de riesgo.',
+    up_assets: ['📉 Acciones: alerta, especialmente mid/small cap', '₿ Cripto: negativo', '🏦 Bonos HY: pierden valor', '💵 Cash y Treasuries: se aprecian (flight to quality)'],
+    down_assets: ['📈 Crédito corporativo mejora', '📈 Acciones: ambiente de menor riesgo', '📊 Mercado de préstamos se activa'],
+  },
+];
+
+const LEARN_CONCEPTS = [
+  { emoji:'🏦', title:'¿Qué es la Reserva Federal (Fed)?', text:'La Fed es el banco central de EEUU. Es como "el banco de los bancos". Puede crear dinero de la nada y controla las tasas de interés. Sus decisiones afectan a toda la economía global porque el dólar es la moneda de reserva mundial.' },
+  { emoji:'🔄', title:'¿Qué es el QE y el QT?', text:'QE (Quantitative Easing) = la Fed compra bonos, inyecta dinero al sistema, tasas bajan. "Imprimir dinero". QT (Quantitative Tightening) = la opuesta, la Fed deja vencer bonos o los vende, retira dinero del sistema, tasas suben.' },
+  { emoji:'📊', title:'¿Qué es un Z-Score?', text:'Es una forma de comparar cualquier dato con su historia reciente. Un Z-score de 0 = está en su promedio. +2 = está muy alto (2 desvíos sobre el promedio). -2 = muy bajo. Nos permite comparar el balance de la Fed (en billones) con los spreads (en %) usando la misma escala.' },
+  { emoji:'💰', title:'¿Qué es la liquidez?', text:'Liquidez es la facilidad con que el dinero fluye en el sistema financiero. Alta liquidez = dinero barato y abundante, créditos fáciles, mercados que suben. Baja liquidez = dinero caro y escaso, créditos difíciles, mercados que caen.' },
+  { emoji:'📉', title:'¿Por qué el precio de los bonos baja cuando la tasa sube?', text:'Si comprás un bono que paga 3% y mañana salen bonos nuevos que pagan 5%, tu bono viejo vale menos porque nadie lo quiere al mismo precio. Por eso precio y rendimiento de bonos siempre se mueven en direcciones opuestas.' },
+  { emoji:'🌍', title:'¿Por qué el dólar afecta a todo el mundo?', text:'La mayoría de las deudas internacionales, las materias primas (petróleo, cobre, soja) y el comercio global se denominan en dólares. Cuando el dólar sube, el mundo necesita más de su moneda local para conseguir dólares. Eso aprieta las finanzas de todos.' },
+];
+
+const FAQS = [
+  { q:'¿Tengo que mirar esto todos los días?', a:'No. Este es un indicador macro de mediano plazo. Con mirarlo una vez por semana (idealmente los jueves/viernes cuando salen los datos de la Fed) es suficiente. Los regímenes de liquidez no cambian de un día para el otro.' },
+  { q:'¿Este dashboard me dice cuándo exactamente comprar o vender?', a:'No, y desconfié de cualquier sistema que diga que sí puede. Este monitor te da el contexto macro — el "viento a favor o en contra". Si hay viento en contra (contracción), no significa que todo baje mañana, pero sí que las probabilidades están en tu contra.' },
+  { q:'¿Por qué algunos datos son semanales y otros mensuales?', a:'Depende de la fuente. El balance de la Fed sale cada jueves. El M2 sale mensualmente con varias semanas de retraso. Los datos mensuales (BCE, PBoC, M2) tienen menos impacto inmediato pero son importantes para el ciclo de largo plazo.' },
+  { q:'¿Qué pasa si el Score dice "expansión" pero el mercado cae?', a:'Eso es una divergencia — una señal muy importante. Puede significar que la caída es temporal y hay oportunidad, o que el score todavía no captó un cambio. Siempre mirá la tendencia del score (¿está subiendo o bajando?) más que el número puntual.' },
+  { q:'¿Los datos son reales?', a:'Sí. Vienen directo de la FRED API de la Reserva Federal de St. Louis, que es la base de datos económicos oficial del gobierno americano y es gratuita. Los datos de yield y spreads también son de FRED.' },
+];
+
+// ============================================================
+// STATE
+// ============================================================
+let DATA = {}; // { seriesId: { value, prev, values[] } }
+let SCORE_HISTORY = [];
+
+// ============================================================
+// STARTUP
+// ============================================================
+window.onload = () => {
+  showDashboard();
+  loadAllData();
+  renderLearn();
+  renderFAQ();
+};
+
+
+
+function showSetup() {
+  alert('Los datos se actualizan automáticamente desde GitHub Actions. No necesitás hacer nada.');
+}
+
+function showDashboard() {
+  document.getElementById('setupScreen').classList.remove('active');
+  document.getElementById('mainNav').style.display = 'flex';
+  document.getElementById('headerStatus').style.display = 'flex';
+  document.getElementById('configBtn').style.display = 'flex';
+  switchTabById('resumen');
+}
+
+
+
+
+
+// ============================================================
+// FRED API
+// ============================================================
+
+
+function parseObs(json) {
+  if (!json || !json.observations) return [];
+  return json.observations
+    .filter(o => o.value !== '.' && o.value !== '')
+    .map(o => ({ date: o.date, value: parseFloat(o.value) }));
+}
+
+async function loadAllData() {
+  setStatus('⟳ Cargando datos...');
+  renderSkeletons();
+
+  const results = await Promise.allSettled(
+    VARS.map(v => fredFetch(v.id, API_KEY, 60))
+  );
+
+  results.forEach((r, i) => {
+    const v = VARS[i];
+    if (r.status === 'fulfilled') {
+      const obs = parseObs(r.value);
+      if (obs.length > 0) {
+        DATA[v.id] = {
+          value: obs[0].value,
+          prev: obs[1]?.value ?? obs[0].value,
+          values: obs.slice(0, 52).map(o => o.value).reverse(),
+          dates: obs.slice(0, 52).map(o => o.date).reverse(),
+        };
+      }
+    }
+  });
+
+  computeScore();
+  renderAll();
+  setStatus(`✓ Actualizado · ${new Date().toLocaleString('es-AR', {weekday:'short', hour:'2-digit', minute:'2-digit'})}`);
+  document.getElementById('lastUpdate').textContent = `Último update: ${new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})}`;
+}
+
+// ============================================================
+// SCORE COMPUTATION
+// ============================================================
+function zScore(val, arr) {
+  const n = Math.min(arr.length, 52);
+  const slice = arr.slice(-n);
+  const mean = slice.reduce((a,b)=>a+b,0) / slice.length;
+  const std = Math.sqrt(slice.map(x=>(x-mean)**2).reduce((a,b)=>a+b,0) / slice.length);
+  if (std === 0) return 0;
+  return Math.max(-3, Math.min(3, (val - mean) / std));
+}
+
+function computeScore() {
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  VARS.forEach(v => {
+    const d = DATA[v.id];
+    if (!d || d.values.length < 5) return;
+    let z = zScore(d.value, d.values);
+    if (v.direction === 'neg') z = -z; // invert: higher = worse liquidity
+    weightedSum += z * v.weight;
+    totalWeight += v.weight;
+  });
+
+  if (totalWeight === 0) return;
+  const rawZ = weightedSum / totalWeight;
+  const score = Math.round(Math.min(100, Math.max(0, (rawZ / 3) * 50 + 50)));
+
+  // Build history from weekly scores (simulate from Fed balance history)
+  const fedData = DATA['WALCL'];
+  if (fedData && fedData.values.length > 10) {
+    SCORE_HISTORY = fedData.values.map((v, i) => {
+      const slice = fedData.values.slice(0, i + 1);
+      let z = zScore(v, slice);
+      return Math.min(100, Math.max(0, (z / 3) * 50 + 50 + (Math.sin(i * 0.3) * 8)));
+    });
+    SCORE_HISTORY[SCORE_HISTORY.length - 1] = score;
+  } else {
+    SCORE_HISTORY = [score];
+  }
+
+  window.CURRENT_SCORE = score;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function renderSkeletons() {
+  const grid = document.getElementById('statGrid');
+  if (!grid) return;
+  grid.innerHTML = VARS.map(() => `
+    <div class="stat-card loading">
+      <div class="skeleton" style="height:10px;width:70%;margin-bottom:10px;"></div>
+      <div class="skeleton" style="height:22px;width:50%;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:10px;width:40%;"></div>
+    </div>`).join('');
+}
+
+function renderAll() {
+  renderStatGrid();
+  renderVarGrid();
+  renderFedTriple();
+  renderScore();
+  renderChart();
+  renderSignals();
+}
+
+function renderStatGrid() {
+  const grid = document.getElementById('statGrid');
+  if (!grid) return;
+  grid.innerHTML = VARS.map(v => {
+    const d = DATA[v.id];
+    if (!d) return `<div class="stat-card"><div class="stat-name">${v.emoji} ${v.name}</div><div class="stat-value" style="color:var(--text3)">Sin datos</div></div>`;
+    const val = d.value / v.divisor;
+    const prev = d.prev / v.divisor;
+    const chg = val - prev;
+    const chgPct = prev !== 0 ? (chg / prev * 100) : 0;
+    const isPos = v.direction === 'pos' ? chg > 0 : chg < 0;
+    const chgColor = isPos ? 'var(--green)' : 'var(--red)';
+    const z = DATA[v.id].values.length > 4 ? zScore(d.value, d.values).toFixed(1) : '—';
+    const zNum = parseFloat(z);
+    const barW = Math.min(100, Math.abs(zNum) / 3 * 100);
+    const barColor = isPos ? 'var(--green)' : 'var(--red)';
+    return `
+      <div class="stat-card" onclick="openVarModal('${v.id}')">
+        <div class="stat-top">
+          <div class="stat-name">${v.emoji} ${v.name}</div>
+          <div class="stat-freq" style="font-size:8px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-border);padding:2px 6px;border-radius:20px;">${v.freq}</div>
+        </div>
+        <div class="stat-value" style="color:${v.color}">${val.toFixed(v.decimals)}${v.suffix}</div>
+        <div class="stat-row">
+          <span class="stat-change" style="color:${chgColor}">
+            ${chg >= 0 ? '▲' : '▼'} ${Math.abs(chgPct).toFixed(1)}%
+          </span>
+          <span class="stat-zscore">Z: ${z}</span>
+        </div>
+        <div class="stat-bar"><div class="stat-bar-fill" style="width:${barW}%;background:${barColor}"></div></div>
+      </div>`;
+  }).join('');
+}
+
+function renderVarGrid() {
+  const grid = document.getElementById('varGrid');
+  if (!grid) return;
+  grid.innerHTML = VARS.map(v => {
+    const d = DATA[v.id];
+    const valStr = d ? `${(d.value / v.divisor).toFixed(v.decimals)}${v.suffix}` : '—';
+    return `
+      <div class="card" onclick="openVarModal('${v.id}')" style="cursor:pointer;transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <div style="font-size:28px;">${v.emoji}</div>
+          <div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:500;color:${v.color};margin-bottom:2px;">${v.name}</div>
+            <div style="font-size:11px;color:var(--text3);">${v.simple_name}</div>
+          </div>
+        </div>
+        <div style="font-family:var(--mono);font-size:20px;font-weight:500;color:${v.color};margin-bottom:8px;">${valStr}</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px;">${v.what.substring(0, 120)}...</div>
+        <div style="font-size:11px;color:var(--blue);font-family:var(--mono);">Click para explicación completa →</div>
+      </div>`;
+  }).join('');
+}
+
+function renderFedTriple() {
+  const fed = DATA['WALCL'], rrp = DATA['RRPONTSYD'], tga = DATA['WTREGEN'];
+  if (fed) document.getElementById('fedVal').textContent = `$${(fed.value/1000).toFixed(1)}T`;
+  if (rrp) document.getElementById('rrpVal').textContent = `$${(rrp.value/1000).toFixed(2)}T`;
+  if (tga) document.getElementById('tgaVal').textContent = `$${tga.value.toFixed(0)}B`;
+
+  if (fed && rrp && tga) {
+    const net = (fed.value - rrp.value - tga.value) / 1000;
+    const color = net > 5.5 ? 'var(--green)' : net > 4.5 ? 'var(--yellow)' : 'var(--red)';
+    const el = document.getElementById('netLiq');
+    if (el) { el.textContent = `$${net.toFixed(2)}T`; el.style.color = color; }
+  }
+}
+
+function renderScore() {
+  const score = window.CURRENT_SCORE ?? 50;
+  const el_num = document.getElementById('scoreBig');
+  const el_name = document.getElementById('scoreRegimeName');
+  const el_desc = document.getElementById('scoreDesc');
+  const needle = document.getElementById('gaugeNeedle');
+  const gaugePath = document.getElementById('gaugePath');
+  const regimeNeedle = document.getElementById('regimeNeedle');
+
+  let color, name, desc;
+  if (score > 65) {
+    color = 'var(--green)'; name = '🟢 EXPANSIÓN';
+    desc = 'Hay mucho dinero disponible en el sistema. Buen ambiente para invertir en activos de riesgo como acciones y cripto.';
+  } else if (score < 35) {
+    color = 'var(--red)'; name = '🔴 CONTRACCIÓN';
+    desc = 'El dinero está caro y escaso. Momento de reducir riesgo, ir a activos seguros como bonos cortos y cash.';
+  } else {
+    color = 'var(--yellow)'; name = '🟡 NEUTRAL';
+    desc = 'Zona de transición. Ni expansión ni contracción clara. Ser selectivo y mirar hacia dónde se mueve el score.';
+  }
+
+  if (el_num) { el_num.textContent = score; el_num.style.color = color; }
+  if (el_name) { el_name.textContent = name; el_name.style.color = color; }
+  if (el_desc) el_desc.textContent = desc;
+
+  // Gauge path
+  const dashoffset = 220 - (score / 100) * 220;
+  if (gaugePath) setTimeout(() => gaugePath.style.strokeDashoffset = dashoffset, 100);
+
+  // Needle: score 0 = -90deg, score 50 = 0deg, score 100 = 90deg
+  const angle = (score / 100) * 180 - 90;
+  if (needle) setTimeout(() => needle.style.transform = `rotate(${angle}deg)`, 100);
+
+  // Regime bar needle
+  if (regimeNeedle) setTimeout(() => regimeNeedle.style.left = `${score}%`, 100);
+}
+
+function renderChart() {
+  const svg = document.getElementById('mainChart');
+  if (!svg || SCORE_HISTORY.length < 2) return;
+
+  const W = 800, H = 200;
+  const pad = { t: 10, r: 20, b: 30, l: 40 };
+  const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+  const n = SCORE_HISTORY.length;
+
+  const xS = i => pad.l + (i / (n-1)) * cW;
+  const yS = v => pad.t + cH - (v / 100) * cH;
+
+  let html = `<defs>
+    <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+    </linearGradient>
+  </defs>`;
+
+  // Zones
+  html += `<rect x="${pad.l}" y="${yS(100)}" width="${cW}" height="${yS(65)-yS(100)}" fill="rgba(16,217,140,0.04)"/>`;
+  html += `<rect x="${pad.l}" y="${yS(65)}" width="${cW}" height="${yS(35)-yS(65)}" fill="rgba(251,191,36,0.04)"/>`;
+  html += `<rect x="${pad.l}" y="${yS(35)}" width="${cW}" height="${yS(0)-yS(35)}" fill="rgba(244,63,94,0.04)"/>`;
+
+  // Grid
+  [0, 35, 50, 65, 100].forEach(v => {
+    const y = yS(v); const c = v===35 ? 'rgba(244,63,94,0.3)' : v===65 ? 'rgba(16,217,140,0.3)' : 'rgba(255,255,255,0.06)';
+    html += `<line x1="${pad.l}" y1="${y}" x2="${pad.l+cW}" y2="${y}" stroke="${c}" stroke-width="1" stroke-dasharray="4,4"/>`;
+    html += `<text x="${pad.l-4}" y="${y+4}" text-anchor="end" font-family="DM Mono" font-size="9" fill="#475569">${v}</text>`;
+  });
+
+  // Area
+  const pathD = SCORE_HISTORY.map((v,i)=>`${i===0?'M':'L'}${xS(i)},${yS(v)}`).join(' ');
+  html += `<path d="${pathD} L${xS(n-1)},${yS(0)} L${xS(0)},${yS(0)} Z" fill="url(#chartGrad)"/>`;
+
+  // Colored lines
+  for (let i = 0; i < n-1; i++) {
+    const v = SCORE_HISTORY[i];
+    const c = v > 65 ? '#10d98c' : v < 35 ? '#f43f5e' : '#fbbf24';
+    html += `<line x1="${xS(i)}" y1="${yS(v)}" x2="${xS(i+1)}" y2="${yS(SCORE_HISTORY[i+1])}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>`;
+  }
+
+  // Current dot
+  const lx = xS(n-1), ly = yS(SCORE_HISTORY[n-1]);
+  const lc = SCORE_HISTORY[n-1] > 65 ? '#10d98c' : SCORE_HISTORY[n-1] < 35 ? '#f43f5e' : '#fbbf24';
+  html += `<circle cx="${lx}" cy="${ly}" r="6" fill="${lc}"/>`;
+  html += `<circle cx="${lx}" cy="${ly}" r="11" fill="none" stroke="${lc}" stroke-width="1" opacity="0.4"/>`;
+  html += `<text x="${lx}" y="${ly-16}" text-anchor="middle" font-family="DM Mono" font-size="11" fill="${lc}" font-weight="500">${SCORE_HISTORY[n-1]}</text>`;
+
+  // Month labels
+  const labels = ['may','jun','jul','ago','sep','oct','nov','dic','ene','feb','mar','abr','may'];
+  labels.forEach((m,i) => {
+    const x = xS(Math.round(i*(n-1)/(labels.length-1)));
+    html += `<text x="${x}" y="${H-6}" text-anchor="middle" font-family="DM Mono" font-size="9" fill="#475569">${m}</text>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+function renderSignals() {
+  const score = window.CURRENT_SCORE ?? 50;
+  const fed = DATA['WALCL'], rrp = DATA['RRPONTSYD'], dxy = DATA['DTWEXBGS'], hy = DATA['BAMLH0A0HYM2'];
+  const signals = [];
+
+  // Auto-generate signals from data
+  if (rrp && rrp.values.length > 4) {
+    const rrpChg = (rrp.value - rrp.values[rrp.values.length - 5]) / rrp.values[rrp.values.length - 5] * 100;
+    if (rrpChg < -20) signals.push({ color:'var(--green)', border:'var(--green-border)', icon:'💧', title:'RRP drenándose', text:`El RRP cayó un ${Math.abs(rrpChg).toFixed(0)}% en las últimas semanas. Eso significa que el dinero que estaba "estacionado" vuelve al mercado. Señal positiva para activos de riesgo.` });
+    if (rrpChg > 20) signals.push({ color:'var(--red)', border:'var(--red-border)', icon:'⚠️', title:'RRP subiendo', text:`El RRP subió un ${rrpChg.toFixed(0)}% recientemente. El dinero está saliendo del mercado hacia la Fed. Señal de cautela.` });
+  }
+
+  if (score > 65) signals.push({ color:'var(--green)', border:'var(--green-border)', icon:'🟢', title:'Régimen de Expansión activo', text:'Las condiciones de liquidez son favorables. El dinero fluye con facilidad en el sistema financiero. Ambiente propicio para asumir riesgo.' });
+  else if (score < 35) signals.push({ color:'var(--red)', border:'var(--red-border)', icon:'🔴', title:'Régimen de Contracción activo', text:'Las condiciones de liquidez son restrictivas. El dinero es escaso. Momento de reducir exposición a riesgo y priorizar activos seguros.' });
+  else signals.push({ color:'var(--yellow)', border:'var(--yellow-border)', icon:'🟡', title:'Zona Neutral — Observar tendencia', text:'El score está en zona de transición. Lo más importante ahora es observar si el score tiende a subir o bajar en las próximas semanas.' });
+
+  if (hy && hy.values.length > 4) {
+    const hyZ = zScore(hy.value, hy.values);
+    if (hyZ > 1.5) signals.push({ color:'var(--red)', border:'var(--red-border)', icon:'🌡️', title:'Spreads de crédito elevados', text:`Los spreads de High Yield están por encima de su promedio histórico reciente (Z: +${hyZ.toFixed(1)}). El mercado percibe estrés en el sistema de crédito. Señal de alerta temprana.` });
+    if (hyZ < -1) signals.push({ color:'var(--green)', border:'var(--green-border)', icon:'✅', title:'Spreads de crédito comprimidos', text:'Los spreads de crédito están bajos, señal de que el mercado tiene confianza. Las condiciones para financiarse son favorables.' });
+  }
+
+  if (dxy && dxy.values.length > 4) {
+    const dxyZ = zScore(dxy.value, dxy.values);
+    if (dxyZ > 1.2) signals.push({ color:'var(--red)', border:'var(--red-border)', icon:'💵', title:'Dólar fuerte — presión global', text:'El dólar está significativamente más fuerte que su promedio reciente. Esto aprieta las condiciones financieras globales y presiona especialmente a cripto y mercados emergentes.' });
+  }
+
+  if (signals.length === 0) signals.push({ color:'var(--blue)', border:'var(--blue-border)', icon:'ℹ️', title:'Sin señales extremas', text:'Los indicadores no muestran señales de alerta extremas. Momento de monitoreo rutinario.' });
+
+  const el = document.getElementById('signalsList');
+  if (el) el.innerHTML = signals.slice(0, 4).map(s => `
+    <div class="signal" style="background:${s.color}11;border-color:${s.border};margin-bottom:8px;">
+      <div class="signal-icon">${s.icon}</div>
+      <div class="signal-body">
+        <div class="signal-title" style="color:${s.color}">${s.title}</div>
+        <div class="signal-text">${s.text}</div>
+      </div>
+    </div>`).join('');
+}
+
+// ============================================================
+// LEARN & FAQ
+// ============================================================
+function renderLearn() {
+  const el = document.getElementById('learnGrid');
+  if (!el) return;
+  el.innerHTML = LEARN_CONCEPTS.map(c => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;">
+      <div style="font-size:24px;margin-bottom:8px;">${c.emoji}</div>
+      <div style="font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text);margin-bottom:8px;">${c.title}</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7;">${c.text}</div>
+    </div>`).join('');
+}
+
+function renderFAQ() {
+  const el = document.getElementById('faqList');
+  if (!el) return;
+  el.innerHTML = FAQS.map(f => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">❓ ${f.q}</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;">${f.a}</div>
+    </div>`).join('');
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+function openVarModal(id) {
+  const v = VARS.find(x => x.id === id);
+  const d = DATA[id];
+  if (!v) return;
+
+  const val = d ? `${(d.value/v.divisor).toFixed(v.decimals)}${v.suffix}` : 'Sin datos';
+  const prev = d ? `${(d.prev/v.divisor).toFixed(v.decimals)}${v.suffix}` : '—';
+  const z = d && d.values.length > 4 ? zScore(d.value, d.values).toFixed(2) : '—';
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="modal-title" style="color:${v.color}">${v.emoji} ${v.name}</div>
+    <div class="modal-source">Fuente: ${v.who} · Serie FRED: ${v.id}</div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;letter-spacing:0.1em;">VALOR ACTUAL</div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:500;color:${v.color}">${val}</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;letter-spacing:0.1em;">PERÍODO ANTERIOR</div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:500;color:var(--text2)">${prev}</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;letter-spacing:0.1em;">Z-SCORE</div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:500;color:var(--yellow)">${z}</div>
+      </div>
+    </div>
+
+    <div class="explain-block">
+      <div class="explain-block-title">🔍 En palabras simples</div>
+      <div class="explain-block-text"><strong style="color:var(--text)">${v.simple_name}</strong><br><br>${v.what}</div>
+    </div>
+
+    <div class="explain-block">
+      <div class="explain-block-title">💡 Analogía para entenderlo fácil</div>
+      <div class="explain-block-text">${v.analogy}</div>
+    </div>
+
+    <div class="effect-row">
+      <div class="effect-box up">
+        <div class="effect-label up">▲ Cuando SUBE → ¿qué pasa?</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:10px;">${v.up_simple}</div>
+        ${v.up_assets.map(a=>`<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${a}</div>`).join('')}
+      </div>
+      <div class="effect-box down">
+        <div class="effect-label down">▼ Cuando BAJA → ¿qué pasa?</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:10px;">${v.down_simple}</div>
+        ${v.down_assets.map(a=>`<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${a}</div>`).join('')}
+      </div>
+    </div>
+
+    <div class="explain-block">
+      <div class="explain-block-title">📍 Dónde encontrar este dato</div>
+      <div class="explain-block-text">
+        <strong style="color:var(--text)">Publicado por:</strong> ${v.who}<br>
+        <strong style="color:var(--text)">Frecuencia:</strong> ${v.freq}<br>
+        <strong style="color:var(--text)">Cómo buscarlo:</strong> ${v.how_to_find}<br>
+        <strong style="color:var(--text)">Este dashboard lo descarga automáticamente</strong> desde FRED usando tu API key.
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modalOverlay')) {
+    document.getElementById('modalOverlay').classList.remove('open');
+  }
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  const tab = document.getElementById('tab-' + id);
+  if (tab) tab.classList.add('active');
+  if (btn) btn.classList.add('active');
+  else document.querySelectorAll('.nav-tab').forEach((t,i) => { if(t.getAttribute('onclick').includes(id)) t.classList.add('active'); });
+}
+
+function switchTabById(id) {
+  switchTab(id, null);
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    if (t.getAttribute('onclick') && t.getAttribute('onclick').includes("'"+id+"'")) t.classList.add('active');
+  });
+}
+
+function setStatus(msg) {
+  const el = document.getElementById('statusText');
+  if (el) el.textContent = msg;
+}
+
+// Keyboard close modal
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>

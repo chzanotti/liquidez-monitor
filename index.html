@@ -644,7 +644,7 @@ const VARS = [
   },
   {
     id: 'RRPONTSYD', name: 'Reverse Repo (RRP)', emoji: '💤',
-    unit: 'B USD', divisor: 1000, decimals: 2, suffix: 'T',
+    unit: 'B USD', divisor: 1, decimals: 2, suffix: 'B',
     color: '#f43f5e', weight: 0.18, freq: 'Diario',
     direction: 'neg', // higher = less liquidity
     simple_name: 'Dinero "dormido" fuera del mercado',
@@ -659,7 +659,7 @@ const VARS = [
   },
   {
     id: 'WTREGEN', name: 'TGA (Cuenta del Tesoro)', emoji: '🏦',
-    unit: 'B USD', divisor: 1, decimals: 0, suffix: 'B',
+    unit: 'B USD', divisor: 1000, decimals: 1, suffix: 'B',
     color: '#fbbf24', weight: 0.15, freq: 'Semanal',
     direction: 'neg',
     simple_name: 'La "cuenta bancaria" del gobierno',
@@ -719,7 +719,7 @@ const VARS = [
   },
   {
     id: 'BAMLH0A0HYM2', name: 'Spreads de Crédito HY', emoji: '🌡️',
-    unit: 'bps', divisor: 1, decimals: 0, suffix: 'bps',
+    unit: '%', divisor: 1, decimals: 2, suffix: '%',
     color: '#34d399', weight: 0.08, freq: 'Semanal',
     direction: 'neg',
     simple_name: 'El termómetro del estrés financiero',
@@ -916,7 +916,7 @@ function renderStatGrid() {
           <div class="stat-name">${v.emoji} ${v.name}</div>
           <div class="stat-freq" style="font-size:8px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-border);padding:2px 6px;border-radius:20px;">${v.freq}</div>
         </div>
-        <div class="stat-value" style="color:${v.color}">${val.toFixed(v.decimals)}${v.suffix}</div>
+        <div class="stat-value" style="color:${v.color}">${val.toLocaleString("en-US", {minimumFractionDigits: v.decimals, maximumFractionDigits: v.decimals})}${v.suffix}</div>
         <div class="stat-row">
           <span class="stat-change" style="color:${chgColor}">
             ${chg >= 0 ? '▲' : '▼'} ${Math.abs(chgPct).toFixed(1)}%
@@ -933,7 +933,7 @@ function renderVarGrid() {
   if (!grid) return;
   grid.innerHTML = VARS.map(v => {
     const d = DATA[v.id];
-    const valStr = d ? `${(d.value / v.divisor).toFixed(v.decimals)}${v.suffix}` : '—';
+    const valStr = d ? `${(d.value / v.divisor).toLocaleString("en-US", {minimumFractionDigits: v.decimals, maximumFractionDigits: v.decimals})}${v.suffix}` : '—';
     return `
       <div class="card" onclick="openVarModal('${v.id}')" style="cursor:pointer;transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
@@ -957,10 +957,10 @@ function renderFedTriple() {
   if (tga) document.getElementById('tgaVal').textContent = `$${tga.value.toFixed(0)}B`;
 
   if (fed && rrp && tga) {
-    const net = (fed.value - rrp.value - tga.value) / 1000;
+    const net = (fed.value / 1000) - rrp.value - (tga.value / 1000);
     const color = net > 5.5 ? 'var(--green)' : net > 4.5 ? 'var(--yellow)' : 'var(--red)';
     const el = document.getElementById('netLiq');
-    if (el) { el.textContent = `$${net.toFixed(2)}T`; el.style.color = color; }
+    if (el) { el.textContent = `$${net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}T`; el.style.color = color; }
   }
 }
 
@@ -1132,8 +1132,8 @@ function openVarModal(id) {
   const d = DATA[id];
   if (!v) return;
 
-  const val = d ? `${(d.value/v.divisor).toFixed(v.decimals)}${v.suffix}` : 'Sin datos';
-  const prev = d ? `${(d.prev/v.divisor).toFixed(v.decimals)}${v.suffix}` : '—';
+  const val = d ? `${(d.value/v.divisor).toLocaleString("en-US", {minimumFractionDigits: v.decimals, maximumFractionDigits: v.decimals})}${v.suffix}` : 'Sin datos';
+  const prev = d ? `${(d.prev/v.divisor).toLocaleString("en-US", {minimumFractionDigits: v.decimals, maximumFractionDigits: v.decimals})}${v.suffix}` : '—';
   const z = d && d.values.length > 4 ? zScore(d.value, d.values).toFixed(2) : '—';
 
   document.getElementById('modalBody').innerHTML = `
